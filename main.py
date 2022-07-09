@@ -1,33 +1,26 @@
-# TODO : improve speed
-# too slow, 100*100 pixels in 280 secs
-
 import time
 import pyautogui as pyg
-from pprint import pprint
 from PIL import Image
 import requests
 from io import BytesIO
 import math
 
-url = "https://scontent.fjai2-3.fna.fbcdn.net/v/t1.6435-1/p480x480/131321493_345922260232932_7824312325167757271_n.jpg?_nc_cat=1&ccb=1-5&_nc_sid=c6021c&_nc_ohc=kwHU0KfTlYIAX-hzL-7&_nc_ht=scontent.fjai2-3.fna&oh=00_AT9nPIszcrlm80o6WC7tVKEPU3oTaJ9TaGKb49wzLD9Jjw&oe=61FBEB44"
-#url = "https://cdn.vox-cdn.com/thumbor/Pkmq1nm3skO0-j693JTMd7RL0Zk=/0x0:2012x1341/1200x800/filters:focal(0x0:2012x1341)/cdn.vox-cdn.com/uploads/chorus_image/image/47070706/google2.0.0.jpg"
-
-
+url = "https://pbs.twimg.com/media/E4LtA9ZXwAsgl1V?format=jpg&name=small"
 
 colorsNames = [['black', 'darkgrey', 'darkblue'],
-          ['white', 'grey', 'blue'],
-          ['darkgreen', 'maroon', 'darkbrown'],
-          ['green', 'red', 'orange'],
-          ['brown', 'darkpink', 'darkpeach'],
-          ['yellow', 'pink', 'peach']]
+               ['white', 'grey', 'blue'],
+               ['darkgreen', 'maroon', 'darkbrown'],
+               ['green', 'red', 'orange'],
+               ['brown', 'darkpink', 'darkpeach'],
+               ['yellow', 'pink', 'peach']]
 
 colorsRGB = {
-    'black' : (0, 0, 0),
-    'darkblue' : (0, 0, 139),
-    'white' : (255, 255, 255),
-    'grey' : (128, 128, 128),
-    'blue' : (0, 0, 255),
-    'darkgreen' : (0, 100, 0),
+    'black': (0, 0, 0),
+    'darkblue': (0, 0, 139),
+    'white': (255, 255, 255),
+    'grey': (128, 128, 128),
+    'blue': (0, 0, 255),
+    'darkgreen': (0, 100, 0),
     'maroon': (128, 0, 0),
     'darkbrown': (101, 67, 33),
     'green': (0, 128, 0),
@@ -40,12 +33,14 @@ colorsRGB = {
     'pink': (255, 192, 203),
     'peach': (255, 229, 180),
 }
+
+
 def closest_color(rgb):
     r, g, b = rgb
     color_diffs = []
     for name, color in colorsRGB.items():
         cr, cg, cb = color
-        color_diff = math.sqrt(abs(r - cr)**2 + abs(g - cg)**2 + abs(b - cb)**2)
+        color_diff = math.sqrt(abs(r - cr) ** 2 + abs(g - cg) ** 2 + abs(b - cb) ** 2)
         color_diffs.append((color_diff, name))
     return min(color_diffs)[1]
 
@@ -55,7 +50,6 @@ img = Image.open(BytesIO(response.content))
 imgH, imgW = img.size
 imgAsr = imgH / imgW
 
-
 dxColors = 35
 dyColors = 38
 
@@ -63,7 +57,6 @@ baseColorsX = 357
 baseColorsY = 342
 
 colorToPos = {}
-
 
 for r in range(6):
     for c in range(3):
@@ -75,10 +68,8 @@ canvasBotX = 1152
 canvasBotY = 653
 dot_diameter = 5
 
-
 canvasWidth = (canvasBotX - canvasTopX) / dot_diameter
 canvasHeight = (canvasBotY - canvasTopY) / dot_diameter
-
 
 """
 w, asr*h
@@ -87,13 +78,10 @@ asr * w <= ch
 w <= min(cw, ch/asr)
 """
 
-pyg.PAUSE = 0
+pyg.PAUSE = 0  # 75 clicks / sec
 imgW = int(min(canvasWidth, canvasHeight / imgAsr))
-imgW = min(imgW, 50)
+imgW = min(imgW, 65)
 imgH = int(imgW * imgAsr)
-
-
-
 
 img = img.resize((imgW, imgH), Image.ANTIALIAS)
 pix = img.load()
@@ -106,19 +94,18 @@ def focus():
 i = 0
 
 
-
-def draw(x, y):
-    global i
-    i += 1
-    color = closest_color(pix[x, y])
-    color_pos = colorToPos[color]
-    pyg.click(color_pos)
-    cx = canvasTopX + x * dot_diameter
-    cy = canvasTopY + y * dot_diameter
-    pyg.click(cx, cy)
-
-
-
+def prepare(img):
+    clicks_for_color = {}
+    for x in range(img.size[0]):
+        for y in range(img.size[1]):
+            color = closest_color(pix[x, y][:3])
+            color_pos = colorToPos[color]
+            cx = canvasTopX + x * dot_diameter
+            cy = canvasTopY + y * dot_diameter
+            if color_pos not in clicks_for_color:
+                clicks_for_color[color_pos] = []
+            clicks_for_color[color_pos].append((cx, cy))
+    return clicks_for_color
 
 
 time.sleep(5)
@@ -126,32 +113,45 @@ focus()
 
 st = time.time()
 
-for x in range(img.size[0]):
-    for y in range(img.size[1]):
-        draw(x, y)
+clicks_for_color = prepare(img)
 
+
+def draw_line(x, y1, y2):
+    if y1 == y2:
+        pyg.click(x, y1)
+    else:
+        pyg.moveTo(x, y1)
+        pyg.dragTo(x, y2, button="left")
+
+
+for color, clicks in clicks_for_color.items():
+    cols = {}
+    for (x, y) in clicks:
+        if x not in cols:
+            cols[x] = []
+        cols[x].append(y)
+
+    pyg.click(color)
+    for x, ys in cols.items():
+        ys = sorted(ys)
+        n = len(ys)
+        line_start = ys[0]
+        line_end = ys[0]
+        for y in ys[1:]:
+            if y == line_end + dot_diameter:
+                line_end = y
+            else:
+                draw_line(x, line_start, line_end)
+                line_start = y
+                line_end = y
+
+        draw_line(x, line_start, line_end)
 
 ed = time.time()
 
 print(ed - st)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#print(canvasWidth, canvasHeight)
+# print(canvasWidth, canvasHeight)
 
 
 """ Color pos test [Works]"""
@@ -166,9 +166,3 @@ print(ed - st)
 #     clickNotOnTop()
 #
 #     cx, cy = pyg.position()
-
-
-
-
-
-
