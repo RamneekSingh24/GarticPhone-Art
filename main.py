@@ -4,6 +4,9 @@ from PIL import Image
 import requests
 from io import BytesIO
 import math
+import sys
+
+sys.setrecursionlimit(10000)
 
 url = "https://pbs.twimg.com/media/E4LtA9ZXwAsgl1V?format=jpg&name=small"
 
@@ -33,6 +36,35 @@ colorsRGB = {
     'pink': (255, 192, 203),
     'peach': (255, 229, 180),
 }
+
+
+def sort_clock_wise(points):
+    return sorted(points, key=clockwiseangle_and_distance)
+
+def clockwiseangle_and_distance(point):
+    origin = [2, 3]
+    refvec = [0, 1]
+    # Vector between point and the origin: v = p - o
+    vector = [point[0]-origin[0], point[1]-origin[1]]
+    # Length of vector: ||v||
+    lenvector = math.hypot(vector[0], vector[1])
+    # If length is zero there is no angle
+    if lenvector == 0:
+        return -math.pi, 0
+    # Normalize vector: v/||v||
+    normalized = [vector[0]/lenvector, vector[1]/lenvector]
+    dotprod  = normalized[0]*refvec[0] + normalized[1]*refvec[1]     # x1*x2 + y1*y2
+    diffprod = refvec[1]*normalized[0] - refvec[0]*normalized[1]     # x1*y2 - y1*x2
+    angle = math.atan2(diffprod, dotprod)
+    # Negative angles represent counter-clockwise angles so we need to subtract them
+    # from 2*pi (360 degrees)
+    if angle < 0:
+        return 2*math.pi+angle, lenvector
+    # I return first the angle because that's the primary sorting criterium
+    # but if two vectors have the same angle then the shorter distance should come first.
+    return angle, lenvector
+
+
 
 
 def closest_color(rgb):
@@ -80,7 +112,7 @@ w <= min(cw, ch/asr)
 
 pyg.PAUSE = 0  # 75 clicks / sec
 imgW = int(min(canvasWidth, canvasHeight / imgAsr))
-imgW = min(imgW, 65)
+imgW = min(imgW, 100)
 imgH = int(imgW * imgAsr)
 
 img = img.resize((imgW, imgH), Image.ANTIALIAS)
@@ -89,7 +121,6 @@ pix = img.load()
 
 def focus():
     pyg.click(canvasTopX, canvasTopY)
-
 
 i = 0
 
@@ -116,6 +147,42 @@ st = time.time()
 clicks_for_color = prepare(img)
 
 
+
+def get_connected_components(positions):
+    n = len(positions)
+    adj = [[]] * n
+    for i in range(n):
+        for j in range(i+1,n):
+            x1,y1 = positions[i]
+            x2,y2 = positions[j]
+            if abs(x1 - x2) == dot_diameter or abs(y1 -y2) == dot_diameter:
+                adj[i].append(j)
+
+    c_no = 0
+
+    component_no = [0] * n
+
+    def dfs(a):
+        component_no[a] = c_no
+        for b in adj[a]:
+            if component_no[b] == 0:
+                dfs(b)
+
+
+
+    for i in range(n):
+        if component_no[i] == 0:
+            c_no += 1
+            dfs(i)
+
+    components = [[]] * (c_no)
+
+    for i in range(n):
+        components[component_no[i] - 1].append(positions[i])
+
+    return components
+
+
 def draw_line(x, y1, y2):
     if y1 == y2:
         pyg.click(x, y1)
@@ -125,13 +192,16 @@ def draw_line(x, y1, y2):
 
 
 for color, clicks in clicks_for_color.items():
+    # comps = get_connected_components(clicks)
+    pyg.click(color)
+    # for pos in clicks:
+    #     pyg.click(pos)
     cols = {}
     for (x, y) in clicks:
         if x not in cols:
             cols[x] = []
         cols[x].append(y)
 
-    pyg.click(color)
     for x, ys in cols.items():
         ys = sorted(ys)
         n = len(ys)
